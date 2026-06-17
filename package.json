@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "description": "Developer productivity tray app — text rephrase, call handoff generation, standup notes, and more",
   "main": "dist/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kamolhasan/ai-buddy.git"
+  },
   "scripts": {
     "build": "webpack --config webpack.config.js",
     "start": "npm run build && electron dist/main.js",
     "dev": "webpack --config webpack.config.js --watch",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "release": "npm run build && electron-builder --publish always"
   },
   "keywords": [
     "developer",

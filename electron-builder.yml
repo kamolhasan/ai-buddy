@@ -1,14 +1,25 @@
-appId: com.hackathon.aibuddy
+appId: com.kamolhasan.aibuddy
 productName: AIBuddy
 directories:
   output: release
 files:
   - dist/**/*
   - assets/**/*
+publish:
+  provider: github
+  owner: kamolhasan
+  repo: ai-buddy
 mac:
   category: public.app-category.productivity
-  target: dmg
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+  artifactName: ${productName}-${version}-${arch}.${ext}
 win:
   target: nsis
+  artifactName: ${productName}-${version}-Setup.${ext}
 linux:
   target: AppImage
+  artifactName: ${productName}-${version}-${arch}.${ext}

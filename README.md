@@ -40,7 +40,21 @@ Transform or analyze the text you selected.
 - **Prompt Refiner** — fills in missing pieces and optimizes a prompt for an AI agent.
 - **Explain Error** — finds the likely root cause and fix for an error or stack trace.
 
-## Setup
+## Install (for users)
+
+Grab the latest installer from the [Releases page](https://github.com/kamolhasan/ai-buddy/releases):
+
+- **macOS** — download the `.dmg`, open it, and drag AIBuddy to Applications.
+- **Windows** — download the `.exe` (Setup) and run it.
+
+The app isn't signed with a paid certificate yet, so your OS will warn you the first time:
+
+- **macOS** — right-click the app and choose **Open**, then confirm. (If it reports the app is "damaged", run `xattr -cr /Applications/AIBuddy.app` once, then open it.) You'll also need to grant Accessibility permission — see [macOS Permissions](#macos-permissions).
+- **Windows** — on the SmartScreen prompt, click **More info** then **Run anyway**.
+
+After installing, open AIBuddy from the tray and add your AI provider API key in Settings (see [Configuration](#configuration)).
+
+## Setup (from source)
 
 ### Prerequisites
 
@@ -80,6 +94,21 @@ npx electron dist/main.js
 # Build distributable
 npm run dist
 ```
+
+## Releasing
+
+Installers are built and published automatically by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)) whenever a version tag is pushed:
+
+```bash
+# 1. Bump the "version" in package.json, then commit it
+git commit -am "Release v1.0.0"
+
+# 2. Tag and push — this triggers the macOS + Windows build
+git tag v1.0.0
+git push origin main --tags
+```
+
+The workflow builds on `macos-latest` and `windows-latest` and uploads the `.dmg`, `.zip`, and Windows `.exe` to a GitHub Release. No secrets to configure — it uses the built-in `GITHUB_TOKEN`.
 
 ## Tech Stack
 
