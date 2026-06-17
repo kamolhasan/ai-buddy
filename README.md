@@ -117,6 +117,17 @@ The workflow builds on `macos-latest` and `windows-latest` and uploads the `.dmg
 - OpenAI SDK / Anthropic SDK
 - Webpack (bundler)
 
+## Troubleshooting
+
+- **macOS: "Apple could not verify…" or app won't open** — the app isn't notarized. Open System Settings → Privacy & Security, click **Open Anyway** next to the AIBuddy message (or right-click the app → **Open**).
+- **macOS: "AIBuddy is damaged and can't be opened"** — clear the quarantine flag once: `xattr -cr /Applications/AIBuddy.app`, then open it.
+- **Windows: "Windows protected your PC" (SmartScreen)** — click **More info** then **Run anyway**.
+- **No window appears on launch** — that's expected. AIBuddy lives in the menu bar / system tray; click its icon, or press `Option+Space` (`Alt+Space` on Windows/Linux).
+- **Shortcut does nothing / nothing gets captured (macOS)** — grant **Accessibility** permission (see above). You may also be prompted to allow control of "System Events" under Automation.
+- **"Failed to register shortcut"** — another app is using `Option/Alt+Space`. Pick a different shortcut in Settings.
+- **Actions error out or return nothing** — make sure you've set a valid API key and model in Settings. Standup/Handoff also need your JIRA and GitHub credentials.
+- **Linux: API keys not saved securely** — without a system keyring, keys are stored unencrypted. Install a keyring (e.g. GNOME Keyring) for encrypted storage.
+
 ## License
 
 [MIT](LICENSE)
