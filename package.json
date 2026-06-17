@@ -1,6 +1,6 @@
 {
   "name": "ai-buddy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Developer productivity tray app — text rephrase, call handoff generation, standup notes, and more",
   "main": "dist/main.js",
   "repository": {
