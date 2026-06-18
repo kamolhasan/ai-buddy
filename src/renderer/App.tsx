@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import CommandPalette from './CommandPalette';
 import Settings from './Settings';
-import { AppSettings } from '../shared/types';
+import { AppSettings, Theme } from '../shared/types';
 import '../shared/electron-api';
 
 type View = 'palette' | 'settings';
@@ -27,6 +27,21 @@ export default function App() {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
+
+  // Reflect the chosen theme onto the document so the CSS variables switch.
+  useEffect(() => {
+    const theme: Theme = settings?.theme ?? 'dark';
+    const media = window.matchMedia('(prefers-color-scheme: light)');
+    const apply = () => {
+      const resolved = theme === 'system' ? (media.matches ? 'light' : 'dark') : theme;
+      document.documentElement.setAttribute('data-theme', resolved);
+    };
+    apply();
+    if (theme === 'system') {
+      media.addEventListener('change', apply);
+      return () => media.removeEventListener('change', apply);
+    }
+  }, [settings?.theme]);
 
   const handleSettingsSaved = async (newSettings: AppSettings) => {
     await window.electronAPI.saveSettings(newSettings);

@@ -5,12 +5,27 @@ A system-tray app that rewrites your text in different tones using AI. Works in 
 ## How It Works
 
 1. Select text in any app (Slack, email, browser, etc.)
-2. Press `Option+Space` (Mac) or `Alt+Space` (Windows/Linux)
+2. Press `⌘⇧K` (Mac) or `Ctrl+Shift+K` (Windows/Linux)
 3. A single command palette appears with your selection captured at the top
 4. Type to fuzzy-search any action (e.g. "friendly", "summarize", "standup"), then press `↵` — or use the inline `⌘1…9` shortcuts
 5. The result streams in live; press `↵` to Apply & Paste, `⌘C` to copy, or `⌘R` to regenerate
 
-Everything happens on one keyboard-first surface — no menu drilling. Turn on **Auto-paste** in Settings to skip the review step entirely.
+Everything happens on one keyboard-first surface — no menu drilling. Turn on **Auto-paste** in Settings to skip the review step entirely. The global shortcut is configurable in Settings.
+
+## Rephrase from the right-click menu (macOS)
+
+On macOS you can rephrase a selection in place without opening the palette:
+
+1. In Settings, click **Add to right-click menu** (also available from the tray menu as **Add Right-Click Rephrase…**). This installs a "Rephrase with AIBuddy" macOS Service.
+2. Select text in any app, right-click, and choose **Services → Rephrase with AIBuddy**.
+3. A small "Rephrasing…" popover appears next to your text; the rephrased result is pasted in place when it's ready.
+
+The tone used is the **Default rephrase tone** set in Settings. Because the result is pasted with ⌘V, this uses the same Accessibility/Automation permissions as the palette (see below).
+
+Notes:
+- If it doesn't appear, enable it once under **System Settings → Keyboard → Keyboard Shortcuts → Services → Text**, then re-open the target app.
+- **Slack:** plain text rephrases fine. A selection that contains a Slack **@mention** can't be rephrased (Slack doesn't expose mention "pills" as text) — AIBuddy safely leaves the text untouched rather than altering it.
+- Only plain-text structure is preserved (line breaks, bullets, numbered lists, indentation, markdown markers). True rich formatting (e.g. real bold in Google Docs) can't survive the plain-text channel.
 
 ## Actions
 
@@ -48,7 +63,7 @@ The recommended (and only supported) way to run AIBuddy is from source.
 
 - [Node.js](https://nodejs.org/) 18+
 - [Git](https://git-scm.com/)
-- An API key from OpenAI or Anthropic
+- One AI provider: an API key from **OpenAI** or **Anthropic**, the **Claude Code** CLI (`claude`) installed locally, or a **Cursor**/OpenAI-compatible endpoint
 
 ### Clone & Run
 
@@ -65,10 +80,12 @@ AIBuddy launches into the menu bar / system tray — there is no main window unt
 ### Configuration
 
 On first launch, click the tray icon → Settings to configure:
-- AI Provider (OpenAI or Anthropic)
-- API Key
-- Model selection
-- Custom keyboard shortcut
+- AI Provider (OpenAI, Anthropic, Claude Code, or Cursor) and its API key
+- Model selection (the Claude Code model is a dropdown: Default / Opus / Sonnet / Haiku)
+- Custom global keyboard shortcut (default `⌘⇧K` / `Ctrl+Shift+K`)
+- Theme (Dark / Light / System)
+- Default rephrase tone (used by the right-click menu)
+- **Add to right-click menu** — installs the macOS "Rephrase with AIBuddy" Service
 
 ### macOS Permissions
 
@@ -100,10 +117,12 @@ npx electron dist/main.js
 
 ## Troubleshooting
 
-- **No window appears on launch** — that's expected. AIBuddy lives in the menu bar / system tray; click its icon, or press `Option+Space` (`Alt+Space` on Windows/Linux).
-- **macOS: `Option+Space` opens the palette but no text is captured** — you're missing the **Automation** permission. Because you run from source, grant it to the **Terminal/IDE** that launched AIBuddy (not "Electron"): System Settings → Privacy & Security → Automation → your Terminal/IDE → enable "System Events" (and grant it Accessibility too), then restart the Terminal/IDE and AIBuddy. The tray → **Permissions Help** menu opens these panes for you.
+- **No window appears on launch** — that's expected. AIBuddy lives in the menu bar / system tray; click its icon, or press `⌘⇧K` (`Ctrl+Shift+K` on Windows/Linux).
+- **macOS: the palette opens but no text is captured** — you're missing the **Automation** permission. Because you run from source, grant it to the **Terminal/IDE** that launched AIBuddy (not "Electron"): System Settings → Privacy & Security → Automation → your Terminal/IDE → enable "System Events" (and grant it Accessibility too), then restart the Terminal/IDE and AIBuddy. The tray → **Permissions Help** menu opens these panes for you.
 - **macOS: pressing the shortcut still does nothing** — first confirm the app is running (menu-bar icon). Try the tray → **Show AIBuddy** menu item: if that also does nothing, check tray → **Open Logs** for the cause. If only the shortcut fails, it's likely a conflict — pick a different one in Settings.
-- **"Failed to register shortcut"** — another app is using `Option/Alt+Space`. Pick a different shortcut in Settings.
+- **"Failed to register shortcut"** — another app is using `⌘⇧K` / `Ctrl+Shift+K`. Pick a different shortcut in Settings.
+- **Right-click "Rephrase with AIBuddy" doesn't appear** — enable it under System Settings → Keyboard → Keyboard Shortcuts → Services → Text, and re-open the target app. It also requires AIBuddy to be running.
+- **Claude Code: "couldn't find the model"** — pick a valid model in Settings (the dropdown offers Opus / Sonnet / Haiku, or Default to use the CLI's configured model).
 - **Actions error out or return nothing** — make sure you've set a valid API key and model in Settings. Standup/Handoff also need your JIRA and GitHub credentials.
 - **Linux: API keys not saved securely** — without a system keyring, keys are stored unencrypted. Install a keyring (e.g. GNOME Keyring) for encrypted storage.
 

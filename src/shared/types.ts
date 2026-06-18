@@ -1,4 +1,6 @@
-export type AIProvider = 'openai' | 'anthropic';
+export type AIProvider = 'openai' | 'anthropic' | 'claude-code' | 'cursor';
+
+export type Theme = 'dark' | 'light' | 'system';
 
 export type ToneId = 'professional' | 'friendly' | 'direct';
 
@@ -23,8 +25,15 @@ export interface AppSettings {
   anthropicApiKey: string;
   openaiModel: string;
   anthropicModel: string;
+  claudeCodePath: string;
+  claudeCodeModel: string;
+  cursorEndpoint: string;
+  cursorApiKey: string;
+  cursorModel: string;
   globalShortcut: string;
   autoPaste: boolean;
+  theme: Theme;
+  defaultRephraseTone: ToneId;
   tonePrompts: TonePrompts;
   promptRefinerPrompt: string;
 
@@ -71,8 +80,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   anthropicApiKey: '',
   openaiModel: 'gpt-4o',
   anthropicModel: 'claude-sonnet-4-20250514',
-  globalShortcut: 'Alt+Space',
+  claudeCodePath: 'claude',
+  claudeCodeModel: '',
+  cursorEndpoint: '',
+  cursorApiKey: '',
+  cursorModel: '',
+  globalShortcut: 'CommandOrControl+Shift+K',
   autoPaste: false,
+  theme: 'dark',
+  defaultRephraseTone: 'professional',
   tonePrompts: {
     professional: '',
     friendly: '',
@@ -98,4 +114,10 @@ export const IPC_CHANNELS = {
   OPEN_EXTERNAL: 'open-external',
   FETCH_JIRA_ACTIVITY: 'fetch-jira-activity',
   FETCH_GITHUB_ACTIVITY: 'fetch-github-activity',
+  INSTALL_REPHRASE_SERVICE: 'install-rephrase-service',
 } as const;
+
+export interface InstallServiceResult {
+  ok: boolean;
+  message: string;
+}

@@ -1,4 +1,4 @@
-import { AppSettings, GenerateRequest } from './types';
+import { AppSettings, GenerateRequest, InstallServiceResult } from './types';
 import { JiraActivity } from './data-sources/jira';
 import { GitHubActivity } from './data-sources/github';
 
@@ -16,6 +16,7 @@ export interface ElectronAPI {
   openExternal: (url: string) => Promise<void>;
   fetchJiraActivity: () => Promise<JiraActivity>;
   fetchGitHubActivity: () => Promise<GitHubActivity>;
+  installRephraseService: () => Promise<InstallServiceResult>;
 }
 
 declare global {

@@ -8,6 +8,7 @@ const SETTINGS_FILE = 'settings.json';
 const SECRET_FIELDS: (keyof AppSettings)[] = [
   'openaiApiKey',
   'anthropicApiKey',
+  'cursorApiKey',
   'jiraApiToken',
   'githubToken',
 ];
@@ -15,6 +16,24 @@ const SECRET_FIELDS: (keyof AppSettings)[] = [
 function getSettingsPath(): string {
   const userDataPath = app.getPath('userData');
   return path.join(userDataPath, SETTINGS_FILE);
+}
+
+const SERVICE_ENDPOINT_FILE = 'service-endpoint';
+
+export function serviceEndpointPath(): string {
+  return path.join(app.getPath('userData'), SERVICE_ENDPOINT_FILE);
+}
+
+// The macOS Quick Action reads this file to discover where to reach the local
+// rephrase server. Two lines — "<port>\n<token>" — so a shell script can parse
+// it without jq/python. Written 0600 since the token guards the endpoint.
+export function writeServiceEndpoint(port: number, token: string): void {
+  const filePath = serviceEndpointPath();
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(filePath, `${port}\n${token}\n`, { encoding: 'utf-8', mode: 0o600 });
 }
 
 // The app was renamed DevBuddy -> AIBuddy, which moves Electron's userData
