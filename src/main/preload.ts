@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS, AppSettings, GenerateRequest } from '../shared/types';
+import { IPC_CHANNELS, AppSettings, GenerateRequest, InstallServiceResult } from '../shared/types';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getClipboardText: (): Promise<string> =>
@@ -42,6 +42,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   fetchGitHubActivity: (): Promise<any> =>
     ipcRenderer.invoke(IPC_CHANNELS.FETCH_GITHUB_ACTIVITY),
+
+  installRephraseService: (): Promise<InstallServiceResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.INSTALL_REPHRASE_SERVICE),
 });
 
 ipcRenderer.on('selected-text', (_event, text: string, editable: boolean) => {

@@ -15,16 +15,20 @@ import {
 } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync, exec } from 'child_process';
+import { execSync, exec, execFile } from 'child_process';
 import { generateText, generateTextStream } from '../shared/ai-service';
+import { resolvePrompt } from '../tools/rephrase';
 import { IPC_CHANNELS, AppSettings, GenerateRequest } from '../shared/types';
 import { fetchJiraActivity } from '../shared/data-sources/jira';
 import { fetchGitHubActivity } from '../shared/data-sources/github';
-import { loadSettings, saveSettings } from './store';
+import { loadSettings, saveSettings, serviceEndpointPath, writeServiceEndpoint } from './store';
+import { startRephraseServer, RephraseServer } from './rephrase-server';
+import { installRephraseQuickAction } from './quick-action';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let settings: AppSettings;
+let rephraseServer: RephraseServer | null = null;
 let previousClipboard = '';
 let previousApp = '';
 let previousFocusEditable = true;
@@ -181,6 +185,26 @@ function createTray(): void {
       label: 'Permissions Help',
       click: () => showPermissionsHelp(),
     },
+    ...(isMac
+      ? [
+          {
+            label: 'Add Right-Click Rephrase…',
+            click: () => {
+              installRephraseService().then((result) => {
+                dialog
+                  .showMessageBox({
+                    type: result.ok ? 'info' : 'error',
+                    title: 'AIBuddy',
+                    message: result.ok ? 'Right-click Rephrase installed' : 'Install failed',
+                    detail: result.message,
+                    buttons: ['OK'],
+                  })
+                  .catch(() => undefined);
+              });
+            },
+          },
+        ]
+      : []),
     {
       label: 'Open Logs',
       click: () => {
@@ -200,7 +224,7 @@ function createTray(): void {
 function registerShortcut(): void {
   globalShortcut.unregisterAll();
 
-  const shortcut = settings.globalShortcut || 'Alt+Space';
+  const shortcut = settings.globalShortcut || 'CommandOrControl+Shift+K';
   let registered = false;
   try {
     registered = globalShortcut.register(shortcut, () => {
@@ -340,6 +364,11 @@ function aiConfig() {
     anthropicApiKey: settings.anthropicApiKey,
     openaiModel: settings.openaiModel,
     anthropicModel: settings.anthropicModel,
+    claudeCodePath: settings.claudeCodePath,
+    claudeCodeModel: settings.claudeCodeModel,
+    cursorEndpoint: settings.cursorEndpoint,
+    cursorApiKey: settings.cursorApiKey,
+    cursorModel: settings.cursorModel,
   };
 }
 
@@ -401,8 +430,237 @@ async function handlePasteResult(
   }, 2000);
 }
 
+// A small, non-focusable "Rephrasing…" popover shown near the cursor while the
+// right-click Quick Action waits on the AI — like macOS's "Look Up" popover. It
+// must never take focus, or it would steal the selection the Service replaces.
+let toastWindow: BrowserWindow | null = null;
+let toastBusyCount = 0;
+let toastSafetyTimer: NodeJS.Timeout | null = null;
+
+const TOAST_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;height:100%;background:transparent;overflow:hidden;cursor:default;
+    -webkit-user-select:none;user-select:none;
+    font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;}
+  .card{display:flex;align-items:center;gap:10px;height:100%;box-sizing:border-box;
+    padding:0 16px;border-radius:12px;
+    background:rgba(28,29,36,0.94);border:1px solid rgba(255,255,255,0.10);
+    color:#ececef;font-size:13px;font-weight:550;letter-spacing:-0.01em;
+    -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);}
+  .spinner{flex:none;width:14px;height:14px;border-radius:50%;
+    border:2px solid rgba(255,255,255,0.22);border-top-color:#818cf8;
+    animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style></head><body>
+  <div class="card"><div class="spinner"></div><span>Rephrasing…</span></div>
+</body></html>`;
+
+// Pre-warm a hidden popover at startup. Building a BrowserWindow + loading its
+// HTML costs ~100-300ms, so doing it lazily made the popover feel laggy; with a
+// warm window, showing it is just a reposition + showInactive (instant).
+function createToastWindow(): void {
+  if (!isMac || toastWindow) return;
+  toastWindow = new BrowserWindow({
+    width: 168,
+    height: 52,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: true,
+    show: false,
+    type: 'panel',
+    webPreferences: { contextIsolation: true, nodeIntegration: false },
+  });
+  toastWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  toastWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(TOAST_HTML));
+}
+
+interface Anchor {
+  kind: 'elem' | 'win';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// Locate where to show the popover via Accessibility, NEVER the mouse:
+//   1. the focused text element (where the selection is), else
+//   2. the frontmost window (we then show at its bottom-center).
+// Returns null only if AX is entirely unavailable. AX uses the same top-left,
+// y-down screen coordinates as Electron.
+function selectionAnchor(): Promise<Anchor | null> {
+  return new Promise((resolve) => {
+    if (!isMac) return resolve(null);
+    execFile(
+      'osascript',
+      [
+        '-e', 'tell application "System Events"',
+        '-e', 'set frontApp to first application process whose frontmost is true',
+        '-e', 'try',
+        '-e', 'set el to value of attribute "AXFocusedUIElement" of frontApp',
+        '-e', 'set p to value of attribute "AXPosition" of el',
+        '-e', 'set s to value of attribute "AXSize" of el',
+        '-e', 'if (item 1 of s) > 0 and (item 2 of s) > 0 then return "elem," & ((item 1 of p) as string) & "," & ((item 2 of p) as string) & "," & ((item 1 of s) as string) & "," & ((item 2 of s) as string)',
+        '-e', 'end try',
+        '-e', 'try',
+        '-e', 'set w to value of attribute "AXFocusedWindow" of frontApp',
+        '-e', 'set p to value of attribute "AXPosition" of w',
+        '-e', 'set s to value of attribute "AXSize" of w',
+        '-e', 'return "win," & ((item 1 of p) as string) & "," & ((item 2 of p) as string) & "," & ((item 1 of s) as string) & "," & ((item 2 of s) as string)',
+        '-e', 'end try',
+        '-e', 'try',
+        '-e', 'set w to item 1 of (windows of frontApp)',
+        '-e', 'set p to value of attribute "AXPosition" of w',
+        '-e', 'set s to value of attribute "AXSize" of w',
+        '-e', 'return "win," & ((item 1 of p) as string) & "," & ((item 2 of p) as string) & "," & ((item 1 of s) as string) & "," & ((item 2 of s) as string)',
+        '-e', 'end try',
+        '-e', 'return "none"',
+        '-e', 'end tell',
+      ],
+      { timeout: 1500 },
+      (err, stdout) => {
+        if (err || !stdout) return resolve(null);
+        const out = stdout.trim();
+        const m = /^(elem|win),(.+)$/.exec(out);
+        if (!m) return resolve(null);
+        const n = m[2].split(',').map((v) => parseFloat(v));
+        if (n.length === 4 && n.every((v) => Number.isFinite(v)) && n[2] > 0 && n[3] > 0) {
+          resolve({ kind: m[1] as Anchor['kind'], x: n[0], y: n[1], w: n[2], h: n[3] });
+        } else {
+          resolve(null);
+        }
+      }
+    );
+  });
+}
+
+async function showRephraseToast(): Promise<void> {
+  toastBusyCount += 1;
+  if (!toastWindow) createToastWindow();
+  if (!toastWindow) return;
+
+  const [width, height] = toastWindow.getSize();
+  const anchor = await selectionAnchor();
+  if (toastBusyCount <= 0 || !toastWindow) return; // hidden again while we queried
+
+  let winX: number;
+  let winY: number;
+  let area: Electron.Rectangle;
+
+  if (anchor && anchor.kind === 'elem') {
+    // Just above the focused text element, horizontally centered on it.
+    area = screen.getDisplayNearestPoint({ x: Math.round(anchor.x), y: Math.round(anchor.y) }).workArea;
+    winX = anchor.x + anchor.w / 2 - width / 2;
+    winY = anchor.y - height - 8;
+    if (winY < area.y + 8) winY = anchor.y + anchor.h + 8; // below if no room above
+  } else if (anchor && anchor.kind === 'win') {
+    // Bottom-center of the frontmost window.
+    area = screen.getDisplayNearestPoint({ x: Math.round(anchor.x), y: Math.round(anchor.y) }).workArea;
+    winX = anchor.x + anchor.w / 2 - width / 2;
+    winY = anchor.y + anchor.h - height - 16;
+  } else {
+    // Last resort: bottom-center of the primary display. Never the mouse.
+    area = screen.getPrimaryDisplay().workArea;
+    winX = area.x + area.width / 2 - width / 2;
+    winY = area.y + area.height - height - 60;
+  }
+
+  // Keep it on-screen.
+  if (winX < area.x + 8) winX = area.x + 8;
+  if (winX + width > area.x + area.width) winX = area.x + area.width - width - 8;
+  if (winY < area.y + 8) winY = area.y + 8;
+  if (winY + height > area.y + area.height) winY = area.y + area.height - height - 8;
+
+  toastWindow.setPosition(Math.round(winX), Math.round(winY));
+  // showInactive keeps focus (and the selection) in the source app.
+  toastWindow.showInactive();
+
+  // Safety net: never let the popover linger if a request hangs.
+  if (toastSafetyTimer) clearTimeout(toastSafetyTimer);
+  toastSafetyTimer = setTimeout(() => hideRephraseToast(true), 120000);
+}
+
+function hideRephraseToast(force = false): void {
+  toastBusyCount = force ? 0 : Math.max(0, toastBusyCount - 1);
+  if (toastBusyCount > 0) return;
+
+  if (toastSafetyTimer) {
+    clearTimeout(toastSafetyTimer);
+    toastSafetyTimer = null;
+  }
+  toastWindow?.hide();
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Simulate ⌘V in the frontmost app (the app the right-click Service ran from).
+// Returns false if it failed — typically a missing Accessibility/Automation grant.
+function pasteClipboard(): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      'osascript',
+      ['-e', 'tell application "System Events" to keystroke "v" using command down'],
+      { timeout: 10000 },
+      (err) => {
+        if (err) {
+          log(`Paste keystroke failed: ${String(err)}`);
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      }
+    );
+  });
+}
+
+// Full right-click rephrase flow, run entirely in the main process: show the
+// popover, rephrase, then paste the result over the selection with ⌘V. We paste
+// ourselves instead of letting macOS "replace selected text" because that path
+// wipes the field in Slack when the selection contains a @mention pill.
+//
+// Data-loss guarantee: we only ever paste NON-EMPTY text. On any failure or an
+// empty model reply we fall back to the original selection (a no-op replace), so
+// the user's text can never be wiped.
+async function rephraseAndPaste(selectedText: string): Promise<void> {
+  if (!isMac || !selectedText.trim()) return;
+
+  showRephraseToast();
+  const savedClipboard = clipboard.readText();
+  try {
+    let out = selectedText; // default: paste the original back (safe no-op)
+    try {
+      const systemPrompt = resolvePrompt(settings.defaultRephraseTone, settings.tonePrompts);
+      const result = await generateText(systemPrompt, selectedText.trim(), aiConfig());
+      if (result && result.trim()) out = result;
+    } catch (err) {
+      log(`Rephrase generation failed: ${String(err)}`);
+    }
+
+    clipboard.writeText(out);
+    await sleep(60);
+    const pasted = await pasteClipboard();
+    if (!pasted) warnAutomationOnce();
+
+    // Restore the user's clipboard once the paste has settled.
+    setTimeout(() => clipboard.writeText(savedClipboard), 1500);
+  } finally {
+    hideRephraseToast();
+  }
+}
+
+function installRephraseService() {
+  return installRephraseQuickAction(serviceEndpointPath());
+}
+
 function setupIPC(): void {
   ipcMain.handle(IPC_CHANNELS.GENERATE_TEXT, handleGenerate);
+  ipcMain.handle(IPC_CHANNELS.INSTALL_REPHRASE_SERVICE, () => installRephraseService());
   ipcMain.handle(IPC_CHANNELS.GENERATE_TEXT_STREAM, handleGenerateStream);
 
   ipcMain.handle(IPC_CHANNELS.CLIPBOARD_TEXT, () => {
@@ -474,9 +732,21 @@ app.whenReady().then(() => {
 
   settings = loadSettings();
 
+  // Local rephrase endpoint that backs the macOS right-click Quick Action.
+  startRephraseServer({
+    rephraseAndPaste,
+    log,
+  })
+    .then((server) => {
+      rephraseServer = server;
+      writeServiceEndpoint(server.port, server.token);
+    })
+    .catch((err) => log(`Failed to start rephrase service: ${String(err)}`));
+
   createTray();
   registerShortcut();
   setupIPC();
+  createToastWindow();
 
   mainWindow = createWindow();
 
@@ -489,6 +759,11 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  rephraseServer?.close();
+  if (toastWindow) {
+    toastWindow.destroy();
+    toastWindow = null;
+  }
 });
 
 app.on('window-all-closed', () => {

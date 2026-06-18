@@ -1,8 +1,24 @@
 import React, { useState } from 'react';
-import { AIProvider, AppSettings, PROVIDERS, ProviderInfo, ToneId } from '../shared/types';
+import { AIProvider, AppSettings, PROVIDERS, ProviderInfo, Theme, ToneId } from '../shared/types';
 import { TONES } from '../tools/rephrase';
 import { DEFAULT_PROMPT_REFINER_PROMPT } from '../tools/prompt-refiner';
 import { CloseGlyph } from './icons';
+
+const THEME_OPTIONS: { id: Theme; label: string }[] = [
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+  { id: 'system', label: 'System' },
+];
+
+// Claude Code accepts these durable aliases (or an empty value for the CLI
+// default). A dropdown avoids the model_not_found errors that free-text display
+// names like "Opus 4.8" caused.
+const CLAUDE_CODE_MODELS: { value: string; label: string }[] = [
+  { value: '', label: 'Default (CLI default)' },
+  { value: 'opus', label: 'Opus' },
+  { value: 'sonnet', label: 'Sonnet' },
+  { value: 'haiku', label: 'Haiku' },
+];
 
 interface SettingsProps {
   settings: AppSettings;
@@ -15,6 +31,7 @@ function getApiKeyField(provider: AIProvider): keyof AppSettings {
   switch (provider) {
     case 'openai': return 'openaiApiKey';
     case 'anthropic': return 'anthropicApiKey';
+    default: return 'openaiApiKey';
   }
 }
 
@@ -22,6 +39,7 @@ function getModelField(provider: AIProvider): keyof AppSettings {
   switch (provider) {
     case 'openai': return 'openaiModel';
     case 'anthropic': return 'anthropicModel';
+    default: return 'openaiModel';
   }
 }
 
@@ -112,6 +130,23 @@ export default function Settings({ settings, onSave, onBack, onClose }: Settings
   const [form, setForm] = useState<AppSettings>({ ...settings });
   const [saved, setSaved] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [serviceStatus, setServiceStatus] = useState<string>('');
+  const [installing, setInstalling] = useState(false);
+
+  const isMac = navigator.platform.toLowerCase().includes('mac');
+
+  const handleInstallService = async () => {
+    setInstalling(true);
+    setServiceStatus('');
+    try {
+      const result = await window.electronAPI.installRephraseService();
+      setServiceStatus(result.message);
+    } catch (err: any) {
+      setServiceStatus(err?.message || "Couldn't install the right-click menu.");
+    } finally {
+      setInstalling(false);
+    }
+  };
 
   const toggleSection = (key: string) => {
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -178,6 +213,116 @@ export default function Settings({ settings, onSave, onBack, onClose }: Settings
             onConnect={() => handleConnect(info)}
           />
         ))}
+
+        <div className="section-label">Local Providers</div>
+
+        {/* Claude Code */}
+        <div className={`provider-card ${form.provider === 'claude-code' ? 'active' : ''}`}>
+          <div className="provider-header">
+            <div className="provider-name-row">
+              <span className={`status-dot connected`} />
+              <span className="provider-name">Claude Code</span>
+            </div>
+            <div className="provider-status">
+              <span className="status-text connected">CLI</span>
+            </div>
+          </div>
+          <div className="provider-body">
+            <div className="model-row">
+              <label>Path:</label>
+              <input
+                type="text"
+                value={form.claudeCodePath}
+                onChange={(e) => { setForm((prev) => ({ ...prev, claudeCodePath: e.target.value })); setSaved(false); }}
+                placeholder="claude"
+                className="model-input"
+              />
+            </div>
+            <span className="hint">Path to the claude CLI binary (default: claude)</span>
+            <div className="model-row">
+              <label>Model:</label>
+              <select
+                value={form.claudeCodeModel}
+                onChange={(e) => { setForm((prev) => ({ ...prev, claudeCodeModel: e.target.value })); setSaved(false); }}
+                className="model-input"
+              >
+                {!CLAUDE_CODE_MODELS.some((m) => m.value === form.claudeCodeModel) && (
+                  <option value={form.claudeCodeModel}>{form.claudeCodeModel} (custom)</option>
+                )}
+                {CLAUDE_CODE_MODELS.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            <span className="hint">Opus is most capable; Haiku is fastest. “Default” uses the CLI's configured model.</span>
+          </div>
+          <div className="provider-actions">
+            {form.provider !== 'claude-code' ? (
+              <button className="btn btn-use" onClick={() => handleActivate('claude-code')}>
+                Use Claude Code
+              </button>
+            ) : (
+              <span className="active-badge">Active</span>
+            )}
+          </div>
+        </div>
+
+        {/* Cursor */}
+        <div className={`provider-card ${form.provider === 'cursor' ? 'active' : ''}`}>
+          <div className="provider-header">
+            <div className="provider-name-row">
+              <span className={`status-dot ${form.cursorEndpoint ? 'connected' : 'disconnected'}`} />
+              <span className="provider-name">Cursor</span>
+            </div>
+            <div className="provider-status">
+              {form.cursorEndpoint ? (
+                <span className="status-text connected">Configured</span>
+              ) : (
+                <span className="status-text disconnected">Not configured</span>
+              )}
+            </div>
+          </div>
+          <div className="provider-body">
+            <div className="model-row">
+              <label>Endpoint:</label>
+              <input
+                type="text"
+                value={form.cursorEndpoint}
+                onChange={(e) => { setForm((prev) => ({ ...prev, cursorEndpoint: e.target.value })); setSaved(false); }}
+                placeholder="http://localhost:1234/v1"
+                className="model-input"
+              />
+            </div>
+            <div className="key-row">
+              <input
+                type="password"
+                value={form.cursorApiKey}
+                onChange={(e) => { setForm((prev) => ({ ...prev, cursorApiKey: e.target.value })); setSaved(false); }}
+                placeholder="API key (optional)"
+                className="key-input"
+              />
+            </div>
+            <div className="model-row">
+              <label>Model:</label>
+              <input
+                type="text"
+                value={form.cursorModel}
+                onChange={(e) => { setForm((prev) => ({ ...prev, cursorModel: e.target.value })); setSaved(false); }}
+                placeholder="cursor-small"
+                className="model-input"
+              />
+            </div>
+          </div>
+          <div className="provider-actions">
+            {form.provider !== 'cursor' ? (
+              <button className="btn btn-use" onClick={() => handleActivate('cursor')}>
+                Use Cursor
+              </button>
+            ) : (
+              <span className="active-badge">Active</span>
+            )}
+          </div>
+        </div>
 
         <div
           className="section-label collapsible"
@@ -284,6 +429,55 @@ export default function Settings({ settings, onSave, onBack, onClose }: Settings
 
         <div className="section-label">General</div>
 
+        <div className="form-group">
+          <label>Theme</label>
+          <div className="theme-options" role="radiogroup" aria-label="Theme">
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={form.theme === opt.id}
+                className={`theme-option ${form.theme === opt.id ? 'selected' : ''}`}
+                onClick={() => { setForm((prev) => ({ ...prev, theme: opt.id })); setSaved(false); }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {isMac && (
+          <div className="integration-card">
+            <div className="integration-name">Right-click Rephrase</div>
+            <div className="form-group">
+              <label>Default tone</label>
+              <div className="theme-options" role="radiogroup" aria-label="Default rephrase tone">
+                {TONES.map((tone) => (
+                  <button
+                    key={tone.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={form.defaultRephraseTone === tone.id}
+                    className={`theme-option ${form.defaultRephraseTone === tone.id ? 'selected' : ''}`}
+                    onClick={() => { setForm((prev) => ({ ...prev, defaultRephraseTone: tone.id })); setSaved(false); }}
+                  >
+                    {tone.emoji} {tone.label}
+                  </button>
+                ))}
+              </div>
+              <span className="hint">
+                Adds “Rephrase with AIBuddy” to the right-click → Services menu, so you can
+                rephrase a selection in place in any app. Save settings to apply tone changes.
+              </span>
+            </div>
+            <button className="btn btn-ghost" onClick={handleInstallService} disabled={installing}>
+              {installing ? 'Installing…' : 'Add to right-click menu'}
+            </button>
+            {serviceStatus && <span className="hint service-status">{serviceStatus}</span>}
+          </div>
+        )}
+
         <div
           className="toggle-row"
           onClick={() => { setForm((prev) => ({ ...prev, autoPaste: !prev.autoPaste })); setSaved(false); }}
@@ -305,7 +499,7 @@ export default function Settings({ settings, onSave, onBack, onClose }: Settings
             type="text"
             value={form.globalShortcut}
             onChange={(e) => setForm((prev) => ({ ...prev, globalShortcut: e.target.value }))}
-            placeholder="Alt+Space"
+            placeholder="CommandOrControl+Shift+K"
           />
           <span className="hint">Restart app after changing shortcut</span>
         </div>

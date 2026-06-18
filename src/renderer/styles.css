@@ -27,6 +27,37 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --t-fast: 110ms ease;
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+  --hover-overlay: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-theme='light'] {
+  --bg: #f4f5f8;
+  --surface: rgba(252, 252, 254, 0.9);
+  --surface-2: rgba(15, 18, 35, 0.035);
+  --surface-3: rgba(15, 18, 35, 0.07);
+  --border: rgba(15, 18, 35, 0.1);
+  --border-strong: rgba(15, 18, 35, 0.18);
+
+  --text: #1c1d26;
+  --text-dim: #565a6b;
+  --text-faint: #8a8e9e;
+
+  --accent: #6366f1;
+  --accent-strong: #5457e8;
+  --accent-soft: rgba(99, 102, 241, 0.1);
+  --accent-line: rgba(99, 102, 241, 0.5);
+
+  --danger: #d6455f;
+  --ok: #2f9e63;
+
+  --shadow: 0 24px 70px rgba(15, 18, 35, 0.22);
+
+  --scrollbar-thumb: rgba(15, 18, 35, 0.18);
+  --scrollbar-thumb-hover: rgba(15, 18, 35, 0.3);
+  --hover-overlay: rgba(15, 18, 35, 0.06);
 }
 
 * {
@@ -514,7 +545,7 @@ kbd {
 }
 
 .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hover-overlay);
   color: var(--text);
 }
 
@@ -687,6 +718,13 @@ kbd {
   margin-top: 5px;
 }
 
+.service-status {
+  white-space: pre-line;
+  margin-top: 8px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
 .form-actions {
   display: flex;
   align-items: center;
@@ -703,6 +741,39 @@ kbd {
 .saved-indicator {
   font-size: 12.5px;
   color: var(--ok);
+}
+
+/* Theme selector */
+.theme-options {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.theme-option {
+  flex: 1;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: default;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+
+.theme-option:hover {
+  color: var(--text);
+}
+
+.theme-option.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
 }
 
 /* Toggle row */
@@ -883,7 +954,7 @@ kbd {
 }
 
 .btn-connect:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hover-overlay);
   color: var(--text);
 }
 
@@ -947,14 +1018,14 @@ kbd {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
 }
 
